@@ -52,7 +52,7 @@ def handle(msg):
             src = msg.src
             key = msg.body.key
             quorum = random.sample(node_ids,w)
-            requests[str(request_id)] = {"src":src,"type":"read","key":key,"responses":[]}
+            requests[str(request_id)] = {"src":src,"msg_id":msg.body.msg_id,"type":"read","key":key,"responses":[]}
                         
             for s in quorum:
                 send(node_id,s,type = 'read',key=key,request_id=request_id)
@@ -69,7 +69,7 @@ def handle(msg):
             if v[1] is None:
                 send(node_id,src,type = 'error',code=20,text='not found')
             else:
-                send(node_id,src,type = 'read_ok',value=v[1])
+                send(node_id,src,type = 'read_ok',in_reply_to=requests[str(msg.body.request_id)]["msg_id"],value=v[1])
     elif msg.body.type == 'error':
         requests[str(msg.body.request_id)]["responses"].append((msg.body.timestamp,None))  
         if len(requests[str(msg.body.request_id)]["responses"]) == math.ceil((len(node_ids)+1)/2):
@@ -80,7 +80,7 @@ def handle(msg):
                 if v[1] is None:
                     send(node_id,src,type = 'error',code=20,text='not found')
                 else:
-                    send(node_id,src,type = 'read_ok',value=v[1])
+                    send(node_id,src,type = 'read_ok',in_reply_to=requests[str(msg.body.request_id)]["msg_id"],value=v[1])
 
             elif requests[str(msg.body.request_id)]["type"] == "cas":
                 v = max(requests[str(msg.body.request_id)]["responses"], key = lambda x : x[0])
@@ -112,7 +112,7 @@ def handle(msg):
             quorum = random.sample(node_ids,w)
             logging.info("QUORUMS:")
             logging.info(quorum)
-            requests[str(request_id)] = {"src":msg.src,"type":"write","key":msg.body.key,"value":msg.body.value,"responses":[],"quorums":quorum}
+            requests[str(request_id)] = {"src":msg.src,"msg_id":msg.body.msg_id,"type":"write","key":msg.body.key,"value":msg.body.value,"responses":[],"quorums":quorum}
 
             for s in quorum:
                 send(node_id,s,type = 'lockread',request_id=request_id,key=msg.body.key)
@@ -133,7 +133,7 @@ def handle(msg):
                 for s in requests[str(msg.body.request_id)]["quorums"]:
                     send(node_id,s,type="write",key=requests[str(msg.body.request_id)]["key"],value=requests[str(msg.body.request_id)]["value"],timestamp=v)
                     send(node_id,s,type="unlock")
-                send(node_id,requests[str(msg.body.request_id)]["src"],type="write_ok")
+                send(node_id,requests[str(msg.body.request_id)]["src"],in_reply_to=requests[str(msg.body.request_id)]["msg_id"],type="write_ok")
         elif requests[str(msg.body.request_id)]["type"] == "cas":
             requests[str(msg.body.request_id)]["responses"].append((msg.body.timestamp,msg.body.value))
             if len(requests[str(msg.body.request_id)]["responses"]) == math.ceil((len(node_ids)+1)/2):
@@ -152,7 +152,7 @@ def handle(msg):
                     for s in requests[str(msg.body.request_id)]["quorums"]:
                         send(node_id,s,type="write",key=requests[str(msg.body.request_id)]["key"],value=requests[str(msg.body.request_id)]["to"],timestamp=v[0]+1)
                         send(node_id,s,type="unlock")
-                    send(node_id,requests[str(msg.body.request_id)]["src"],type="cas_ok")
+                    send(node_id,requests[str(msg.body.request_id)]["src"],in_reply_to=requests[str(msg.body.request_id)]["msg_id"],type="cas_ok")
     elif msg.body.type == 'lockread':
         if not locked:
             locked = (msg.src,msg.body.request_id)
@@ -180,7 +180,7 @@ def handle(msg):
         logging.info("CAS key: %s from: %s to: %s",msg.body.key,getattr(msg.body,'from'),msg.body.to)
         w = math.ceil((len(node_ids)+1)/2)
         quorum = random.sample(node_ids,w)
-        requests[str(request_id)] = {"src":msg.src,"type":"cas","key":msg.body.key,"from":getattr(msg.body,'from'),"to":msg.body.to,"responses":[],"quorums":quorum}
+        requests[str(request_id)] = {"src":msg.src,"msg_id":msg.body.msg_id,"type":"cas","key":msg.body.key,"from":getattr(msg.body,'from'),"to":msg.body.to,"responses":[],"quorums":quorum}
 
         for s in quorum:
             send(node_id,s,type = 'lockread',request_id=request_id,key=msg.body.key)
