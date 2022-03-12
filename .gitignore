@@ -130,3 +130,6 @@ dmypy.json
 
 # Maelstrom
 store/
+
+# mac
+.DS_Store
