@@ -12,8 +12,6 @@ from ms import send, receiveAll, reply, exitOnError
 logging.getLogger().setLevel(logging.DEBUG)
 executor=ThreadPoolExecutor(max_workers=1)
 
-dic = {}
-
 def handleRead(msg):
     v = max(requests[str(msg.body.request_id)]["responses"], key = lambda x : x[0])
 
@@ -27,7 +25,7 @@ def handleRead(msg):
 
 def handle(msg):
     # State
-    global node_id, node_ids,version, responses,src,key,requests,request_id,locked, locked_requests
+    global node_id, node_ids,version, responses,src,key,requests,request_id,locked, locked_requests, dic
 
     # Message handlers
     if msg.body.type == 'init':
@@ -36,6 +34,9 @@ def handle(msg):
 
         locked_requests = set()
         locked = None
+
+        # key: (timestamp,value)
+        dic = {}
 
         # requests received
         requests = {}
@@ -56,10 +57,10 @@ def handle(msg):
             # Se mensagem vem de outro Servidor
             if msg.body.key in dic:
                 # Se houver a key no dic, responde com o valor
-                reply(msg,type='read_ok',value=dic[msg.body.key],timestamp=version,request_id=msg.body.request_id)
+                reply(msg,type='read_ok',value=dic[msg.body.key],request_id=msg.body.request_id)
             else:
                 # Se não houver responde com erro not found
-                reply(msg,type='error',code=20,timestamp=version,request_id=msg.body.request_id,text='not found')
+                reply(msg,type='error',code=20,request_id=msg.body.request_id,text='not found')
         else:
             # Se mensagem vier de um cliente
             w = math.ceil((len(node_ids)+1)/2)
@@ -80,10 +81,9 @@ def handle(msg):
         
     elif msg.body.type == 'read_ok':
         # insere par de resposta (timestamp,value) no campo de respostas de um dado request do cliente (dado pelo request_id)
-        requests[str(msg.body.request_id)]["responses"].append((msg.body.timestamp,msg.body.value))
+        requests[str(msg.body.request_id)]["responses"].append(msg.body.value)
         if len(requests[str(msg.body.request_id)]["responses"]) == math.ceil((len(node_ids)+1)/2):
             # Já recebeu as respostas de todos os nodos
-
 
             #handleRead(msg)
             # Calculo do timestamp maior:
@@ -91,13 +91,13 @@ def handle(msg):
       
             if v[1] is None:
                 # Se o valor do nodo que tem maior versao for none então não existe esse valor
-                send(node_id,src,type = 'error',code=20,text='not found')
+                send(node_id,src,type = 'error',in_reply_to=requests[str(msg.body.request_id)]["msg_id"],code=20,text='not found')
             else:
                 # Se tiver valor, então responde com read_ok para o cliente
                 send(node_id,src,type = 'read_ok',in_reply_to=requests[str(msg.body.request_id)]["msg_id"],value=v[1])
     elif msg.body.type == 'error':
         # insere par de resposta (timestamp,None) no campo de respostas de um dado request do cliente (dado pelo request_id)
-        requests[str(msg.body.request_id)]["responses"].append((msg.body.timestamp,None))  
+        requests[str(msg.body.request_id)]["responses"].append((-1,None))  
         if len(requests[str(msg.body.request_id)]["responses"]) == math.ceil((len(node_ids)+1)/2):
             # Já recebeu as respostas de todos os nodos
             if requests[str(msg.body.request_id)]["type"] == "read":
@@ -107,7 +107,7 @@ def handle(msg):
                 v = max(requests[str(msg.body.request_id)]["responses"], key = lambda x : x[0])
                
                 if v[1] is None:
-                    send(node_id,src,type = 'error',code=20,text='not found')
+                    send(node_id,src,type = 'error',in_reply_to=requests[str(msg.body.request_id)]["msg_id"],code=20,text='not found')
                 else:
                     send(node_id,src,type = 'read_ok',in_reply_to=requests[str(msg.body.request_id)]["msg_id"],value=v[1])
 
@@ -116,13 +116,13 @@ def handle(msg):
                 v = max(requests[str(msg.body.request_id)]["responses"], key = lambda x : x[0])
                 if v[1] is None:
                     # Caso o valor seja None, dá reply com not found e envia unlocks aos servidores
-                    send(node_id,requests[str(msg.body.request_id)]["src"],type="error",code="20",text="not found")
+                    send(node_id,requests[str(msg.body.request_id)]["src"],type="error",in_reply_to=requests[str(msg.body.request_id)]["msg_id"],code="20",text="not found")
                     for s in requests[str(msg.body.request_id)]["quorums"]:
                         send(node_id,s,type="unlock")
 
                 elif v[1] != requests[str(msg.body.request_id)]["from"]:
                     # Caso o valor seja diferente do que esta no from, da reply com not equal e envia unlocks aos servidores
-                    send(node_id,requests[str(msg.body.request_id)]["src"],type="error",code="22",text="not equal")
+                    send(node_id,requests[str(msg.body.request_id)]["src"],type="error",in_reply_to=requests[str(msg.body.request_id)]["msg_id"],code="22",text="not equal")
                     for s in requests[str(msg.body.request_id)]["quorums"]:
                         send(node_id,s,type="unlock")
                 else:
@@ -153,34 +153,36 @@ def handle(msg):
 
         else:
             # from other node
-            if msg.src == locked[0] and msg.body.timestamp > version:
+            if msg.src == locked[0]:
+                if (msg.body.key in dic and msg.body.timestamp > dic[msg.body.key][0]) or msg.body.key not in dic:
                 # caso o node tenha o lock adquirido e a sua versão (do node) for maior, então atualiza a versão e o dic
-                dic[msg.body.key] = msg.body.value
-                version = msg.body.timestamp
+                    dic[msg.body.key] = (msg.body.timestamp,msg.body.value)
+                    if msg.body.timestamp > version:
+                        version = msg.body.timestamp
 
     elif msg.body.type == 'lockread_ok':
         # caso seja obtido o lock
         if requests[str(msg.body.request_id)]["type"] == "write":
             # insere o timestamp nas respostas e quando as obtiver todas, escreve nos nodos e responde ao cliente
-            requests[str(msg.body.request_id)]["responses"].append(msg.body.timestamp)
+            requests[str(msg.body.request_id)]["responses"].append(msg.body.value)
             if len(requests[str(msg.body.request_id)]["responses"]) == math.ceil((len(node_ids)+1)/2):
-                v = max(requests[str(msg.body.request_id)]["responses"], key = lambda x : x)
+                v = max(requests[str(msg.body.request_id)]["responses"], key = lambda x : x[0])
                 for s in requests[str(msg.body.request_id)]["quorums"]:
-                    send(node_id,s,type="write",key=requests[str(msg.body.request_id)]["key"],value=requests[str(msg.body.request_id)]["value"],timestamp=v+1)
+                    send(node_id,s,type="write",key=requests[str(msg.body.request_id)]["key"],value=requests[str(msg.body.request_id)]["value"],timestamp=v[0]+1)
                     send(node_id,s,type="unlock")
                 send(node_id,requests[str(msg.body.request_id)]["src"],in_reply_to=requests[str(msg.body.request_id)]["msg_id"],type="write_ok")
         elif requests[str(msg.body.request_id)]["type"] == "cas":
             # insere o (timestamp,value) nas respostas e quando as obtiver todas, escreve nos nodos, dá unlock e responde ao cliente
-            requests[str(msg.body.request_id)]["responses"].append((msg.body.timestamp,msg.body.value))
+            requests[str(msg.body.request_id)]["responses"].append(msg.body.value)
             if len(requests[str(msg.body.request_id)]["responses"]) == math.ceil((len(node_ids)+1)/2):
                 v = max(requests[str(msg.body.request_id)]["responses"], key = lambda x : x[0])
                 if v[1] is None:
-                    send(node_id,requests[str(msg.body.request_id)]["src"],type="error",code="20",text="not found")
+                    send(node_id,requests[str(msg.body.request_id)]["src"],type="error",in_reply_to=requests[str(msg.body.request_id)]["msg_id"],code="20",text="not found")
                     for s in requests[str(msg.body.request_id)]["quorums"]:
                         send(node_id,s,type="unlock")
 
                 elif v[1] != requests[str(msg.body.request_id)]["from"]:
-                    send(node_id,requests[str(msg.body.request_id)]["src"],type="error",code="22",text="not equal")
+                    send(node_id,requests[str(msg.body.request_id)]["src"],type="error",in_reply_to=requests[str(msg.body.request_id)]["msg_id"],code="22",text="not equal")
                     for s in requests[str(msg.body.request_id)]["quorums"]:
                         send(node_id,s,type="unlock")
                 else:
@@ -196,9 +198,9 @@ def handle(msg):
             locked = (msg.src,msg.body.request_id)
             # responder com o valor da key
             if msg.body.key in dic:
-                reply(msg,type="lockread_ok",timestamp=version,request_id=locked[1],value=dic[msg.body.key])
+                reply(msg,type="lockread_ok",request_id=locked[1],value=dic[msg.body.key])
             else:
-                reply(msg,type="lockread_ok",timestamp=version,request_id=locked[1],value=None)
+                reply(msg,type="lockread_ok",request_id=locked[1],value=(-1,None))
         else:
             # insere numa queue de locks
             locked_requests.add((msg.src,msg.body.request_id,msg.body.key))
@@ -214,9 +216,9 @@ def handle(msg):
             locked = locked_requests.pop()
             # falta enviar outros campos + adicionar campo key no locked
             if locked[2] in dic:
-                send(node_id,locked[0],type='lockread_ok',timestamp=version,request_id=locked[1],value=dic[locked[2]])
+                send(node_id,locked[0],type='lockread_ok',request_id=locked[1],value=dic[locked[2]])
             else:
-                send(node_id,locked[0],type='lockread_ok',timestamp=version,request_id=locked[1],value=None)
+                send(node_id,locked[0],type='lockread_ok',request_id=locked[1],value=(-1,None))
     
 
     elif msg.body.type == 'cas':
