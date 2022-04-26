@@ -1,0 +1,12 @@
+- uma justificação da necessidade dos "locks" para a operação CAS
+Na operação cas, é preciso obter um lock aquando da leitura, pois sem esse lock, o seu valor pode ser alterado, por outro cliente, entre a leitura e a escrita, fazendo com que o valor final seja o do cliente que fez o cas e não o do cliente que fez um write posteriormente.
+Por exemplo:
+1) cliente 1 faz um CAS
+2) servidor1 recebe o pedido do cliente 1 para a key 0, compara os valores, e verifica que o valor from se encontra válido
+3) cliente 2 faz um write
+4) servidor2 recebe o pedido do cliente 2 sobre a key 0, e reescreve o valor
+5) servidor1 escreve sobre a key 0 o valor vindo no pedido do cliente 1
+
+Assim no final teremos a key 0 com o valor que o cliente1 modificou, apesar do cliente2 ter feito uma operação DEPOIS do cliente1
+
+Por outro lado também poderá tentar fazer um CAS depois de um write e, não "esperando" pelo término do write, a sua comparação poderá ser feita com o valor escrito anteriormente a esse write, e por isso pode nem executar o CAS
