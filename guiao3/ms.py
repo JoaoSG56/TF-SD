@@ -21,7 +21,19 @@ def receiveAll():
     while data := stdin.readline():
         logging.debug("received %s", data.strip())
         yield loads(data, object_hook=lambda x: sn(**x))
-    
+
+def retransmit(src,dest,body):
+    global msg_id
+    data = dumps(sn(dest=dest, src=src,**body.__dict__),default=vars)
+    logging.debug("sending %s", data)
+    print(data, flush=True)
+
+def send2(src, dest, **body):
+    global msg_id
+    data = dumps(sn(dest=dest, src=src, body=sn(**body)), default=vars)
+    logging.debug("sending %s", data)
+    print(data, flush=True)
+
 def exitOnError(fn, *args):
     try:
         fn(*args)
