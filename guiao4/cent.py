@@ -16,7 +16,7 @@ async def handle(msg):
     async def process_transition(message):
         global current, messages_out_of_order
 
-        if msg.body.ts == current:
+        if message.body.ts == current:
 
             if message.body.type == 'txn':
                 # Locks são adquiridos
@@ -58,6 +58,7 @@ async def handle(msg):
             # Verifica se alguma mensagem esta em espera
             if current in messages_out_of_order:
                 await process_transition(messages_out_of_order.pop(current))
+
         else:
             # Adiciona message no dict se não esta na sua vez 
             messages_out_of_order.update({msg.body.ts:message})
