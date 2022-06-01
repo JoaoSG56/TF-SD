@@ -61,7 +61,7 @@ async def handle(msg):
 
         else:
             # Adiciona message no dict se não esta na sua vez 
-            messages_out_of_order.update({msg.body.ts:message})
+            messages_out_of_order.update({message.body.ts:message})
 
     # Messagem de init
     if msg.body.type == 'init':
