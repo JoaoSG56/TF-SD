@@ -1,16 +1,16 @@
 # Tolerância a Faltas - Lab 4
 
 ## Garantir que não existe re-execução de transações e permitir execução não deterministica
-Para garantir que não existe re-execução de transações e permitir execução não deterministica iremos utilizar replicação passiva. Deste modo, a maquina que receber o pedido de transação irá calcular o resultado e irá envia-lo a todas as réplicas, de modo a estas não re-executarem e a poderem ser executadas operações não-deterministicas (sendo a operação efetuada uma vez, o resultado será o mesmo em todas as bases de dados). 
+Para garantir que não existe re-execução de transações e permitir execução não deterministica iremos utilizar replicação passiva. Deste modo, a máquina que receber o pedido de transação irá calcular o resultado e irá envia-lo a todas as réplicas, de modo a estas não re-executarem e a poderem ser executadas operações não-deterministicas (sendo a operação efetuada uma vez, o resultado será o mesmo em todas as bases de dados). 
 
 ## Garantir a total order
-Para garintir a total order utilizamos o serviço "lin-tso" do maelstrom
-Para isso, definimos em cada servidor um timestamp global (current) em que uma mensagem só é executada quando o seu ts é igual ao current. Se o ts da mensagem for maior que o current, esta é guardada num dicionário (messages_out_of_order) para ser processada na sua vez
-Após processar uma mensagem o current é incrementado e verificamos se a mensagem com ts correspondente a esse current incrementado está no dicionário. Se estiver, processamos essa mensagem e assim recursivamente até a mensagem seguinte não estar no dicionario
+Para garintir a total order utilizamos o serviço "lin-tso" do maelstrom.
+Para isso, definimos em cada servidor um timestamp global (current) em que uma mensagem só é executada quando o seu ts é igual ao current. Se o ts da mensagem for maior que o current, esta é guardada num dicionário (messages_out_of_order) para ser processada na sua vez.
+Após processar uma mensagem, o current é incrementado e verificamos se a mensagem com ts correspondente a esse current incrementado está no dicionário. Se estiver, processamos essa mensagem e assim recursivamente até a mensagem seguinte não estar no dicionario.
 
 ## Anexar ts a mensagem txn
-Quando uma mensagem "txn" chega ao servidor, metemos essa mensagem numa queue (messages_no_ts) e enviamos um pedido "ts"
-Ao receber o "ts_ok" removemos a mensagem na queue e anexamos o timestamp recebido a mensagem, antes de procedermos para a transition
+Quando uma mensagem "txn" chega ao servidor, metemos essa mensagem numa queue (messages_no_ts) e enviamos um pedido "ts".
+Ao receber o "ts_ok" removemos a mensagem na queue e anexamos o timestamp recebido a mensagem, antes de procedermos para a função "process_transition".
 
 ## Processar a mensagem txn
 A mensagem é processada pela função "process_transition".
