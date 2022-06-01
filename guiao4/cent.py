@@ -84,10 +84,6 @@ async def handle(msg):
 
     # Mensagem que contém o ts
     elif msg.body.type == 'ts_ok':
-        logging.info("CURRENT: " + str(current))
-        logging.info("TS: " + str(msg.body.ts))
-        logging.info(messages_out_of_order)
-        logging.info("\n")
         # Remove mensagem de queue sem ts
         message = messages_no_ts.pop(0)
 
